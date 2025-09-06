@@ -283,8 +283,8 @@ def main(exp, args):
         logger.info("loading checkpoint")
         ckpt = torch.load(ckpt_file, map_location=args.device, weights_only=False)
         # load the model state dict
-        logger.info(ckpt.keys())
-        model.load_state_dict(ckpt.model)
+        logger.info(ckpt['model'])
+        model = ckpt['model']
         logger.info("loaded checkpoint done.")
 
     if args.fuse:
