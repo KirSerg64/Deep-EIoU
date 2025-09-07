@@ -1,0 +1,29 @@
+configs_user/
+runs/
+data/
+models/
+outputs/
+multiruns/
+# pretrained_models/
+.vscode/
+notebooks/
+weights/
+slurm/
+states/
+video_pipeline/
+*..yaml
+tests/
+checkpoints/
+YOLOX_outputs/
+*.log
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+*.mp4
+*.avi
