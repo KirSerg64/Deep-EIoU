@@ -10,6 +10,7 @@ sys.path.append('.')
 
 from loguru import logger
 
+from ultralytics import YOLO
 from yolox.data.data_augment import preproc
 from yolox.exp import get_exp
 from yolox.utils import fuse_model, get_model_info, postprocess
@@ -163,20 +164,22 @@ class Predictor(object):
         img_info["width"] = width
         img_info["raw_img"] = img
 
-        img, ratio = preproc(img, self.test_size, self.rgb_means, self.std)
+        # img, ratio = preproc(img, self.test_size, self.rgb_means, self.std)
+        ratio = min(self.test_size[0] / img.shape[0], self.test_size[1] / img.shape[1])
         img_info["ratio"] = ratio
-        img = torch.from_numpy(img).unsqueeze(0).float().to(self.device)
-        if self.fp16:
-            img = img.half()  # to FP16
+        # img = torch.from_numpy(img).unsqueeze(0).float().to(self.device)
+        # if self.fp16:
+        #     img = img.half()  # to FP16
 
         with torch.no_grad():
             timer.tic()
-            outputs = self.model(img)
+            outputs = self.model.predict(img)
             if self.decoder is not None:
                 outputs = self.decoder(outputs, dtype=outputs.type())
             outputs = postprocess(
-                outputs, self.num_classes, self.confthre, self.nmsthre
+                outputs, img_info, self.num_classes, self.confthre, self.nmsthre
             )
+            outputs = np.stack(outputs)
         return outputs, img_info
 
 def imageflow_demo(predictor, extractor, vis_folder, current_time, args):
@@ -202,13 +205,14 @@ def imageflow_demo(predictor, extractor, vis_folder, current_time, args):
         ret_val, frame = cap.read()
         if ret_val:
             outputs, img_info = predictor.inference(frame, timer)
-            if outputs[0] is not None:
-                det = outputs[0].cpu().detach().numpy()
-                scale = min(1440/width, 800/height)
-                det /= scale
-                rows_to_remove = np.any(det[:, 0:4] < 1, axis=1) # remove edge detection
-                det = det[~rows_to_remove]
-                cropped_imgs = [frame[max(0,int(y1)):min(height,int(y2)),max(0,int(x1)):min(width,int(x2))] for x1,y1,x2,y2,_,_,_ in det]
+            if outputs is not None:
+                # det = outputs[0].cpu().detach().numpy()
+                # scale = min(1440/width, 800/height)
+                # det /= scale
+                # rows_to_remove = np.any(det[:, 0:4] < 1, axis=1) # remove edge detection
+                # det = det[~rows_to_remove]
+                det = outputs
+                cropped_imgs = [frame[max(0,int(y1)):min(height,int(y2)),max(0,int(x1)):min(width,int(x2))] for x1,y1,x2,y2,_ in det]
                 embs = extractor(cropped_imgs)
                 embs = embs.cpu().detach().numpy()
                 online_targets = tracker.update(det, embs)
@@ -281,10 +285,10 @@ def main(exp, args):
         else:
             ckpt_file = args.ckpt
         logger.info("loading checkpoint")
-        ckpt = torch.load(ckpt_file, map_location=args.device, weights_only=False)
-        # load the model state dict
-        logger.info(ckpt['model'])
-        model = ckpt['model']
+        # ckpt = torch.load(ckpt_file, map_location=args.device, weights_only=False)
+        # # load the model state dict
+        # model.load_state_dict(ckpt['model'])
+        model = YOLO(ckpt_file, task="detect")
         logger.info("loaded checkpoint done.")
 
     if args.fuse:
@@ -313,7 +317,7 @@ def main(exp, args):
     extractor = FeatureExtractor(
         model_name='osnet_x1_0',
         model_path = 'checkpoints/sports_model.pth.tar-60',
-        device='cuda'
+        device='cpu',
     )   
 
     imageflow_demo(predictor, extractor, vis_folder, current_time, args)
